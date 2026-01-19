@@ -2,6 +2,7 @@ package com.brain
 
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -14,7 +15,7 @@ class WakeListener(val context: Context, val onWake: (String) -> Unit) {
     init {
         recognizer.setRecognitionListener(object : RecognitionListener {
 
-            override fun onResults(results: android.os.Bundle?) {
+            override fun onResults(results: Bundle?) {
 
                 val matches =
                     results?.getStringArrayList(
@@ -61,6 +62,11 @@ class WakeListener(val context: Context, val onWake: (String) -> Unit) {
         intent.putExtra(
             RecognizerIntent.EXTRA_LANGUAGE,
             "en-IN"
+        )
+
+        intent.putExtra(
+            RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE,
+            "hi-IN"
         )
 
         recognizer.startListening(intent)
