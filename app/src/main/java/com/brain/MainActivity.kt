@@ -48,7 +48,13 @@ class MainActivity : Activity() {
 
         val lang = language.detect(userText)
 
-        var ai = phi.reply(userText)
+        // get past context
+        val past = memory.recall()
+
+        // include memory in thinking
+        var ai = phi.reply(
+            "Past context:\n$past\n\nUser: $userText"
+        )
 
         // Use search for latest info
         if (userText.contains("today") ||
