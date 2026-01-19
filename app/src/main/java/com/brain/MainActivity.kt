@@ -56,6 +56,14 @@ class MainActivity : Activity() {
             "Past context:\n$past\n\nUser: $userText"
         )
 
+        // 🔥 ADDED: Check for "remember" commands
+        if(userText.contains("yaad rakh") ||
+           userText.contains("remember")) {
+
+            memory.save(userText)
+            ai = "Theek hai dost, maine yaad rakh liya 👍"
+        }
+
         // Use search for latest info
         if (userText.contains("today") ||
             userText.contains("latest") ||
