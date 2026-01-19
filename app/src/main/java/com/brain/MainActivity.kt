@@ -10,18 +10,25 @@ class MainActivity : Activity() {
     lateinit var speakBtn: Button
     lateinit var output: TextView
 
+    val phi = Phi3()
+    val search = Search()
+    val memory = Memory()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        speakBtn = Button(this)
-        output = TextView(this)
+        setContentView(R.layout.activity_main)
 
-        speakBtn.text = "Speak"
+        speakBtn = findViewById(R.id.speak)
+        output = findViewById(R.id.output)
 
         speakBtn.setOnClickListener {
-            output.text = "Listening..."
-        }
 
-        setContentView(output)
+            val userText = "hello solmie"
+
+            val ai = phi.reply(userText)
+
+            output.text = ai
+        }
     }
 }
