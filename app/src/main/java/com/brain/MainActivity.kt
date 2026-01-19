@@ -16,6 +16,8 @@ class MainActivity : Activity() {
     lateinit var voice: Voice
     val language = Language()
 
+    lateinit var wake: WakeListener
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -24,35 +26,42 @@ class MainActivity : Activity() {
         speakBtn = findViewById(R.id.speak)
         output = findViewById(R.id.output)
 
-        // initialize voice engine
         voice = Voice(this)
 
-        speakBtn.setOnClickListener {
+        // 🔥 WAKE WORD SYSTEM
+        wake = WakeListener(this) { heard ->
 
-            // TEMP: real speech input will come next
-            val userText = "hello solmie"
-
-            // detect language
-            val lang = language.detect(userText)
-
-            // get AI reply from Phi-3 layer
-            var ai = phi.reply(userText)
-
-            // OPTIONAL: if user asks latest info → use search
-            if(userText.contains("today") ||
-               userText.contains("latest")) {
-
-                ai = search.web(userText)
+            runOnUiThread {
+                processSpeech(heard)
             }
-
-            // show on screen
-            output.text = ai
-
-            // speak in detected language
-            voice.speak(ai, lang)
-
-            // save to memory
-            memory.save(userText + " → " + ai)
         }
+
+        wake.startListening()
+
+        speakBtn.setOnClickListener {
+            output.text = "Wake mode active: say SOLMIE"
+        }
+    }
+
+    fun processSpeech(userText: String) {
+
+        val lang = language.detect(userText)
+
+        var ai = phi.reply(userText)
+
+        // Use search for latest info
+        if (userText.contains("today") ||
+            userText.contains("latest") ||
+            userText.contains("aaj") ||
+            userText.contains("hun")) {
+
+            ai = search.web(userText)
+        }
+
+        output.text = ai
+
+        voice.speak(ai, lang)
+
+        memory.save("$userText → $ai")
     }
 }
