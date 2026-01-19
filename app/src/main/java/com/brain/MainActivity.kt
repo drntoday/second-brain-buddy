@@ -1,48 +1,58 @@
 package com.brain
 
+import android.app.Activity
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : Activity() {
 
-    private lateinit var speakBtn: Button
-    private lateinit var output: TextView
+    lateinit var speakBtn: Button
+    lateinit var output: TextView
 
-    private val phi = Phi3()
-    private val search = Search()
-    private val memory = Memory()
-    private lateinit var voice: Voice
-    private val language = Language()
+    val phi = Phi3()
+    val search = Search()
+    val memory = Memory()
+    lateinit var voice: Voice
+    val language = Language()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContentView(R.layout.activity_main)
 
-        // initialize voice engine with context
-        voice = Voice(this)
-
         speakBtn = findViewById(R.id.speak)
         output = findViewById(R.id.output)
 
+        // initialize voice engine
+        voice = Voice(this)
+
         speakBtn.setOnClickListener {
 
-            // later this will come from speech-to-text
+            // TEMP: real speech input will come next
             val userText = "hello solmie"
-
-            // get AI reply
-            val aiReply = phi.reply(userText)
 
             // detect language
             val lang = language.detect(userText)
 
-            // show on screen
-            output.text = aiReply
+            // get AI reply from Phi-3 layer
+            var ai = phi.reply(userText)
 
-            // speak result
-            voice.speak(aiReply, lang)
+            // OPTIONAL: if user asks latest info → use search
+            if(userText.contains("today") ||
+               userText.contains("latest")) {
+
+                ai = search.web(userText)
+            }
+
+            // show on screen
+            output.text = ai
+
+            // speak in detected language
+            voice.speak(ai, lang)
+
+            // save to memory
+            memory.save(userText + " → " + ai)
         }
     }
 }
