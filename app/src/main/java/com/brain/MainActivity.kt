@@ -15,6 +15,7 @@ class MainActivity : Activity() {
     val memory = Memory()
     lateinit var voice: Voice
     val language = Language()
+    val tone = Tone() // Added Tone class instance
 
     lateinit var wake: WakeListener
 
@@ -57,6 +58,9 @@ class MainActivity : Activity() {
 
             ai = search.web(userText)
         }
+
+        // Apply Hinglish tone to the response
+        ai = tone.makeHinglish(ai) // Added tone transformation
 
         output.text = ai
 
