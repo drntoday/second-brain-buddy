@@ -29,6 +29,19 @@ class MainActivity : Activity() {
 
         voice = Voice(this)
 
+        // start background whisper service
+        startService(Intent(this, WhisperService::class.java))
+
+        // receive wake events
+        registerReceiver(object: android.content.BroadcastReceiver(){
+            override fun onReceive(c: android.content.Context?, i: Intent?){
+
+                val text = i?.getStringExtra("text") ?: ""
+                processSpeech(text)
+            }
+        }, 
+        android.content.IntentFilter("SOLMIE_WAKE"))
+
         // 🔥 WAKE WORD SYSTEM
         wake = WakeListener(this) { heard ->
 
