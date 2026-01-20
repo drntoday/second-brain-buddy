@@ -117,6 +117,34 @@ class MainActivity : Activity() {
             ai = search.web(userText)
         }
 
+        // --- SAFETY ---
+        if(Safe().check(userText)){
+
+            ai = Safe().message()
+
+        } else {
+
+            // streaming + summarize
+            var full = ""
+
+            phi.replyStream(userText) {
+                full += it + " "
+            }
+
+            ai = Whisper().short(full)
+        }
+
+        // only speak if earphone connected
+        if(Ear(this).isConnected()){
+
+            voice.speak(ai, lang)
+
+        } else {
+
+            output.text = ai +
+              "\n(Connect earphone for voice)"
+        }
+        
         // Apply Hinglish tone to the response
         ai = tone.makeHinglish(ai) // Added tone transformation
 
