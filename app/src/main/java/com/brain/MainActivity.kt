@@ -10,7 +10,7 @@ class MainActivity : Activity() {
     lateinit var speakBtn: Button
     lateinit var output: TextView
 
-    val phi = Phi3()
+    lateinit var phi: Phi3
     val search = Search()
     val memory = Memory()
     lateinit var voice: Voice
@@ -33,6 +33,8 @@ class MainActivity : Activity() {
 
         phi.load(filesDir.absolutePath + "/phi3/phi3-mini.onnx")
 
+        phi = Phi3(filesDir.absolutePath + "/phi35")
+        
         // start background whisper service
         startService(Intent(this, WhisperService::class.java))
 
