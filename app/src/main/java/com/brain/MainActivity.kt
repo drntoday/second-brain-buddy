@@ -17,7 +17,8 @@ class MainActivity : Activity() {
     val language = Language()
     val tone = Tone() // Added Tone class instance
     val tutor = Tutor()
-
+    val coach = Coach()
+ 
     lateinit var wake: WakeListener
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,6 +85,19 @@ class MainActivity : Activity() {
             ai = tutor.teach(userText)
 
             memory.save("study: $userText")
+
+            output.text = ai
+            voice.speak(ai, lang)
+            return
+        }
+
+
+        // ---- CONVERSATION COACH MODE ----
+        if(coach.isCoach(userText)){
+
+            ai = coach.guide(userText)
+
+            memory.save("coach: $userText")
 
             output.text = ai
             voice.speak(ai, lang)
