@@ -12,42 +12,74 @@ class Phi3(val basePath: String) {
     private var tokenizer = Tokenizer(basePath)
 
     init {
-        // 🔥 ADDED: Configure thread options
         val options = OrtSession.SessionOptions()
-        
+
+        // Thread tuning for your phone
         options.setIntraOpNumThreads(4)
         options.setInterOpNumThreads(4)
-        
+
         session = env.createSession(
             File(basePath + "/model.onnx").absolutePath,
             options
         )
     }
 
+    // --------------------------------------------------
+    // SINGLE REPLY (uses generation loop internally)
+    // --------------------------------------------------
+
     fun reply(input: String): String {
 
         val prompt =
             "<|user|>\n$input\n<|assistant|>"
 
-        val tokens = tokenizer.encode(prompt)
+        val inputTokens = tokenizer.encode(prompt)
 
-        val tensor = OnnxTensor.createTensor(
-            env,
-            longArrayOf(1, tokens.size.toLong()),
-            tokens
+        var generated = mutableListOf<Long>()
+        generated.addAll(inputTokens.toList())
+
+        // ---- GENERATION LOOP ----
+        repeat(120) {   // max tokens
+
+            val tensor = OnnxTensor.createTensor(
+                env,
+                longArrayOf(1, generated.size.toLong()),
+                generated.toLongArray()
+            )
+
+            val outputs = session.run(
+                mapOf("input_ids" to tensor)
+            )
+
+            // logits shape: [1, seq, vocab]
+            val logits =
+                outputs.get(0).value as Array<Array<FloatArray>>
+
+            // take last position logits
+            val lastLogits =
+                logits[0][logits[0].size - 1]
+
+            val nextToken =
+                argmax(lastLogits)
+
+            // stop tokens
+            if(nextToken == tokenizer.eos())
+                return tokenizer.decode(
+                    generated.toLongArray()
+                )
+
+            generated.add(nextToken)
+        }
+
+        return tokenizer.decode(
+            generated.toLongArray()
         )
-
-        val result = session.run(
-            mapOf("input_ids" to tensor)
-        )
-
-        val output =
-            result.get(0).value as Array<LongArray>
-
-        return tokenizer.decode(output[0])
     }
 
-    // 🔥 ADDED: Streaming function
+    // --------------------------------------------------
+    // STREAMING VERSION
+    // --------------------------------------------------
+
     fun replyStream(
         input: String,
         onToken: (String) -> Unit
@@ -56,26 +88,60 @@ class Phi3(val basePath: String) {
         val prompt =
             "<|user|>\n$input\n<|assistant|>"
 
-        val tokens = tokenizer.encode(prompt)
+        val inputTokens = tokenizer.encode(prompt)
 
-        val tensor = OnnxTensor.createTensor(
-            env,
-            longArrayOf(1, tokens.size.toLong()),
-            tokens
-        )
+        var generated = mutableListOf<Long>()
+        generated.addAll(inputTokens.toList())
 
-        val result = session.run(
-            mapOf("input_ids" to tensor)
-        )
+        repeat(120) {
 
-        val output =
-            result.get(0).value as Array<LongArray>
+            val tensor = OnnxTensor.createTensor(
+                env,
+                longArrayOf(1, generated.size.toLong()),
+                generated.toLongArray()
+            )
 
-        for(t in output[0]) {
+            val outputs = session.run(
+                mapOf("input_ids" to tensor)
+            )
 
-            val word = tokenizer.decode(longArrayOf(t))
+            val logits =
+                outputs.get(0).value as Array<Array<FloatArray>>
 
-            onToken(word)
+            val lastLogits =
+                logits[0][logits[0].size - 1]
+
+            val nextToken =
+                argmax(lastLogits)
+
+            if(nextToken == tokenizer.eos())
+                return
+
+            generated.add(nextToken)
+
+            // emit only new token
+            onToken(
+                tokenizer.decode(
+                    longArrayOf(nextToken)
+                )
+            )
         }
+    }
+
+    // --------------------------------------------------
+
+    private fun argmax(arr: FloatArray): Long {
+
+        var best = 0
+        var bestVal = arr[0]
+
+        for(i in arr.indices) {
+            if(arr[i] > bestVal) {
+                bestVal = arr[i]
+                best = i
+            }
+        }
+
+        return best.toLong()
     }
 }
