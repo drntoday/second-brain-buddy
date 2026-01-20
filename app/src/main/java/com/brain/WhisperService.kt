@@ -12,6 +12,13 @@ class WhisperService : Service() {
     lateinit var tts: TextToSpeech
     lateinit var phi: Phi3
 
+    override fun onStartCommand(
+     i: Intent?, f: Int, id: Int): Int {
+
+     mode = i?.getStringExtra("mode") ?: "chat"
+     return START_STICKY
+        }
+    
     override fun onCreate() {
         super.onCreate()
 
