@@ -63,6 +63,30 @@ class WhisperService : Service() {
                         ans += "\n\nLatest info:\n$web"
                 }
 
+                v.listen { text ->
+
+                    when {
+
+                      text.startsWith("study") -> {
+
+                        val t = Tutor(phi)
+                        val ans = t.lesson(text.removePrefix("study"))
+                        speak(ans)
+                      }
+
+                      text.startsWith("improve") -> {
+
+                        val c = Coach(phi)
+                        val ans = c.improve(text)
+                        speak(ans)
+                      }
+
+                      else -> {
+                        // normal earlier logic
+                      }
+                    }
+                 }
+                
                 // 💾 SAVE TO MEMORY
                 mem.add(text, ans)
 
