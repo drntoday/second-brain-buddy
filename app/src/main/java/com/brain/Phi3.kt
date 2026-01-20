@@ -3,51 +3,41 @@ package com.brain
 import ai.onnxruntime.*
 import java.io.File
 
-class Phi3 {
+class Phi3(val basePath: String) {
 
-    var session: OrtSession? = null
-    val lang = Language()
+    private var session: OrtSession
+    private var env: OrtEnvironment =
+        OrtEnvironment.getEnvironment()
 
-    fun load(path: String) {
+    private var tokenizer = Tokenizer(basePath)
 
-        val env = OrtEnvironment.getEnvironment()
-
+    init {
         session = env.createSession(
-            File(path).absolutePath,
+            File(basePath + "/model.onnx").absolutePath,
             OrtSession.SessionOptions()
         )
     }
 
     fun reply(input: String): String {
 
-        val language = lang.detect(input)
+        val prompt =
+            "<|user|>\n$input\n<|assistant|>"
 
-        val prompt = lang.systemPrompt(language) +
-                     "\nUser: " + input +
-                     "\nSolmie:"
+        val tokens = tokenizer.encode(prompt)
 
-        return runModel(prompt)
-    }
+        val tensor = OnnxTensor.createTensor(
+            env,
+            longArrayOf(1, tokens.size.toLong()),
+            tokens
+        )
 
-    private fun runModel(text: String): String {
+        val result = session.run(
+            mapOf("input_ids" to tensor)
+        )
 
-        try {
+        val output =
+            result.get(0).value as Array<LongArray>
 
-            // SIMPLE PLACEHOLDER TOKEN LOGIC
-            // Real tokenizer we add next
-
-            val result = session?.run(
-                mapOf("input" to OnnxTensor.createTensor(
-                    OrtEnvironment.getEnvironment(),
-                    arrayOf(text)
-                ))
-            )
-
-            return result?.get(0)?.value.toString()
-
-        } catch(e: Exception) {
-
-            return "Dost, thoda soch raha hoon…"
-        }
+        return tokenizer.decode(output[0])
     }
 }
