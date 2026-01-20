@@ -46,4 +46,36 @@ class Phi3(val basePath: String) {
 
         return tokenizer.decode(output[0])
     }
+
+    // 🔥 ADDED: Streaming function
+    fun replyStream(
+        input: String,
+        onToken: (String) -> Unit
+    ) {
+
+        val prompt =
+            "<|user|>\n$input\n<|assistant|>"
+
+        val tokens = tokenizer.encode(prompt)
+
+        val tensor = OnnxTensor.createTensor(
+            env,
+            longArrayOf(1, tokens.size.toLong()),
+            tokens
+        )
+
+        val result = session.run(
+            mapOf("input_ids" to tensor)
+        )
+
+        val output =
+            result.get(0).value as Array<LongArray>
+
+        for(t in output[0]) {
+
+            val word = tokenizer.decode(longArrayOf(t))
+
+            onToken(word)
+        }
+    }
 }
