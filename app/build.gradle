@@ -1,0 +1,18 @@
+plugins {
+    id 'com.android.application'
+    id 'kotlin-android'
+}
+
+android {
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.brain"
+        minSdk 26
+        targetSdk 34
+    }
+}
+
+dependencies {
+    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.17.0"
+}
