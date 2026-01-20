@@ -8,6 +8,8 @@
     <application
         android:label="Solmie"
         android:theme="@android:style/Theme.Material.Light">
+        
+        <service android:name=".WhisperService"/>
 
         <activity android:name=".MainActivity"
             android:exported="true">
