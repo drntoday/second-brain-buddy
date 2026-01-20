@@ -1,77 +1,47 @@
 package com.brain
 
-import android.app.Service
-import android.content.Intent
-import android.os.IBinder
+import android.content.Context
+import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.SpeechRecognizer
 import android.speech.RecognizerIntent
+import android.content.Intent
 
-class WakeListener : Service(), RecognitionListener {
+class WakeListener(val ctx: Context, val onWake: () -> Unit) {
 
-    lateinit var sr: SpeechRecognizer
+        private val sr = SpeechRecognizer.createSpeechRecognizer(ctx)
 
-    val words = listOf(
-        "solmie", "solmi", "सोमी", "सोल्मी"
-    )
+            fun start() {
 
-    override fun onCreate() {
-        super.onCreate()
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
 
-        sr = SpeechRecognizer.createSpeechRecognizer(this)
-        sr.setRecognitionListener(this)
+                                sr.setRecognitionListener(object : RecognitionListener {
 
-        listen()
-    }
+                                                override fun onResults(results: Bundle?) {
+                                                                    val list = results
+                                                                                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
 
-    fun listen() {
-        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                                                                                                        val text = list?.joinToString(" ")?.lowercase() ?: ""
 
-        i.putExtra(
-            RecognizerIntent.EXTRA_LANGUAGE,
-            "en-IN"
-        )
+                                                                                                                        if (text.contains("solmie") ||
+                                                                                                                                            text.contains("solmi") ||
+                                                                                                                                                                text.contains("सोमी") ||
+                                                                                                                                                                                    text.contains("सोल्मी")) {
 
-        i.putExtra(
-            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-        )
+                                                                                                                                                                                                            onWake()
+                                                                                                                                                                                    }
+                                                }
 
-        sr.startListening(i)
-    }
+                                                            override fun onReadyForSpeech(p0: Bundle?) {}
+                                                                        override fun onBeginningOfSpeech() {}
+                                                                                    override fun onRmsChanged(p0: Float) {}
+                                                                                                override fun onBufferReceived(p0: ByteArray?) {}
+                                                                                                            override fun onEndOfSpeech() {}
+                                                                                                                        override fun onError(p0: Int) {}
+                                                                                                                                    override fun onPartialResults(p0: Bundle?) {}
+                                                                                                                                                override fun onEvent(p0: Int, p1: Bundle?) {}
+                                })
 
-    override fun onResults(r: Bundle?) {
-
-        val list =
-          r?.getStringArrayList(
-            SpeechRecognizer.RESULTS_RECOGNITION
-          ) ?: return
-
-        val text = list.joinToString(" ").lowercase()
-
-        for(w in words){
-            if(text.contains(w)){
-                startService(
-                  Intent(this, WhisperService::class.java)
-                )
-                break
+                                        sr.startListening(intent)
             }
-        }
-
-        listen()
-    }
-
-    override fun onError(e: Int) {
-        listen()
-    }
-
-    override fun onReadyForSpeech(p0: Bundle?) {}
-    override fun onBeginningOfSpeech() {}
-    override fun onRmsChanged(p0: Float) {}
-    override fun onBufferReceived(p0: ByteArray?) {}
-    override fun onEndOfSpeech() {}
-    override fun onPartialResults(p0: Bundle?) {}
-    override fun onEvent(p0: Int, p1: Bundle?) {}
-
-    override fun onBind(i: Intent?): IBinder? = null
 }

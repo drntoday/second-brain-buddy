@@ -36,5 +36,4 @@ plugins {
 
                                                                                                                                         // Microsoft ONNX – correct names
                                                                                                                                             implementation "com.microsoft.onnxruntime:onnxruntime-android:1.17.1"
-                                                                                                                                                implementation "com.microsoft.onnxruntime:onnxruntime-genai:0.3.0"
-                                                                                                                                                }
+                                                                                                                                           }
