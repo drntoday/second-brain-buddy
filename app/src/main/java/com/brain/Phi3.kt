@@ -1,43 +1,53 @@
 package com.brain
 
+import ai.onnxruntime.*
+import java.io.File
+
 class Phi3 {
 
+    var session: OrtSession? = null
     val lang = Language()
+
+    fun load(path: String) {
+
+        val env = OrtEnvironment.getEnvironment()
+
+        session = env.createSession(
+            File(path).absolutePath,
+            OrtSession.SessionOptions()
+        )
+    }
 
     fun reply(input: String): String {
 
         val language = lang.detect(input)
 
-        val base = when(language){
+        val prompt = lang.systemPrompt(language) +
+                     "\nUser: " + input +
+                     "\nSolmie:"
 
-            "hindi" -> """
-                Main Solmie hoon – tumhara dost.
-                Aaram se, friendly tarike se jawab do.
-                Simple shabdon me samjhao.
-            """
+        return runModel(prompt)
+    }
 
-            "bhojpuri" -> """
-                Hum Solmie bani.
-                Pyaar se, aasan boli me samjha.
-            """
+    private fun runModel(text: String): String {
 
-            "punjabi" -> """
-                Main Solmie haan.
-                Dost waang gal karo, sokhi Punjabi.
-            """
+        try {
 
-            "haryanvi" -> """
-                Main Solmie su.
-                Apne dhang te, mithe bol me bata.
-            """
+            // SIMPLE PLACEHOLDER TOKEN LOGIC
+            // Real tokenizer we add next
 
-            else -> """
-                I am Solmie, your friendly buddy.
-                Reply in warm, simple, human tone.
-            """
+            val result = session?.run(
+                mapOf("input" to OnnxTensor.createTensor(
+                    OrtEnvironment.getEnvironment(),
+                    arrayOf(text)
+                ))
+            )
+
+            return result?.get(0)?.value.toString()
+
+        } catch(e: Exception) {
+
+            return "Dost, thoda soch raha hoon…"
         }
-
-        // REAL MODEL WILL COME HERE
-        return base + "\n\n" + "You said: " + input
     }
 }
