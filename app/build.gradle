@@ -15,8 +15,7 @@ android {
 
 dependencies {
 
+    // OFFICIAL generation runtime
     implementation "com.microsoft.onnxruntime:onnxruntime-android:1.17.0"
-
-    // JSON for tokenizer
-    implementation "org.json:json:20231013"
+    implementation "com.microsoft.onnxruntime:onnxruntime-genai:0.3.0"
 }
