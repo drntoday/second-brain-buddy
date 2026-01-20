@@ -12,9 +12,15 @@ class Phi3(val basePath: String) {
     private var tokenizer = Tokenizer(basePath)
 
     init {
+        // 🔥 ADDED: Configure thread options
+        val options = OrtSession.SessionOptions()
+        
+        options.setIntraOpNumThreads(4)
+        options.setInterOpNumThreads(4)
+        
         session = env.createSession(
             File(basePath + "/model.onnx").absolutePath,
-            OrtSession.SessionOptions()
+            options
         )
     }
 
