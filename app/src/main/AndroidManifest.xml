@@ -1,10 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Permissions -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-    <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.BLUETOOTH"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
 
     <application
         android:label="Solmie"
@@ -20,12 +19,8 @@
         </activity>
 
         <service
-            android:name=".WakeListener"
-            android:foregroundServiceType="microphone"/>
-
-        <service
             android:name=".WhisperService"
-            android:foregroundServiceType="mediaPlayback"/>
+            android:foregroundServiceType="microphone"/>
 
     </application>
 </manifest>
