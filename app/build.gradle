@@ -15,7 +15,9 @@ android {
 
 dependencies {
 
-    // OFFICIAL generation runtime
+    // Core ONNX
     implementation "com.microsoft.onnxruntime:onnxruntime-android:1.17.0"
+
+    // 🔥 OFFICIAL GENERATION API
     implementation "com.microsoft.onnxruntime:onnxruntime-genai:0.3.0"
 }
