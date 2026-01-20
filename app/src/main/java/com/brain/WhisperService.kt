@@ -42,6 +42,25 @@ class WhisperService : Service() {
             val safe = Safe()
             val search = Search()
 
+            when(mode){
+
+             "tutor" -> {
+               val t = Tutor(phi)
+               speak("Kaun sa topic padhna hai dost?")
+               v.listen { q -> speak(t.lesson(q)) }
+             }
+
+             "coach" -> {
+               val c = Coach(phi)
+               speak("Apna sentence bolo")
+               v.listen { q -> speak(c.improve(q)) }
+             }
+
+             else -> {  // normal chat
+               // existing logic
+             }
+            }
+
             // 🛡 SAFETY CHECK
             if(!safe.check(text)){
                 speak("Sorry dost, is topic me main madad nahi kar sakta.")
