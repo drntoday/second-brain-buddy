@@ -1,84 +1,61 @@
 package com.brain
 
-import ai.onnxruntime.*
-import java.io.File
+import ai.onnxruntime.genai.*
 
-class Phi3(val basePath: String) {
+class Phi3(modelPath: String) {
 
-    private var session: OrtSession
-    private var env: OrtEnvironment =
-        OrtEnvironment.getEnvironment()
-
-    private var tokenizer = Tokenizer(basePath)
+    private val model: Model
+    private val tokenizer: Tokenizer
 
     init {
-        val options = OrtSession.SessionOptions()
-
-        // Thread tuning for your phone
-        options.setIntraOpNumThreads(4)
-        options.setInterOpNumThreads(4)
-
-        session = env.createSession(
-            File(basePath + "/model.onnx").absolutePath,
-            options
-        )
+        // Microsoft recommended loader
+        model = Model(modelPath)
+        tokenizer = model.createTokenizer()
     }
 
-    // --------------------------------------------------
-    // SINGLE REPLY (uses generation loop internally)
-    // --------------------------------------------------
+    // -------------------------------
+    // SIMPLE REPLY
+    // -------------------------------
 
     fun reply(input: String): String {
 
         val prompt =
             "<|user|>\n$input\n<|assistant|>"
 
-        val inputTokens = tokenizer.encode(prompt)
+        val params = GeneratorParams(model)
 
-        var generated = mutableListOf<Long>()
-        generated.addAll(inputTokens.toList())
+        // official search options
+        params.setSearchOption("max_length", 256)
+        params.setSearchOption("temperature", 0.7)
 
-        // ---- GENERATION LOOP ----
-        repeat(120) {   // max tokens
+        // tokenize using MICROSOFT tokenizer
+        params.inputSequences =
+            tokenizer.encode(prompt)
 
-            val tensor = OnnxTensor.createTensor(
-                env,
-                longArrayOf(1, generated.size.toLong()),
-                generated.toLongArray()
+        val generator =
+            Generator(model, params)
+
+        val output = StringBuilder()
+
+        while (generator.hasNext()) {
+
+            generator.computeLogits()
+            generator.generateNextToken()
+
+            val token =
+                generator.getLastTokenInSequence(0)
+
+            output.append(
+                tokenizer.decode(token)
             )
-
-            val outputs = session.run(
-                mapOf("input_ids" to tensor)
-            )
-
-            // logits shape: [1, seq, vocab]
-            val logits =
-                outputs.get(0).value as Array<Array<FloatArray>>
-
-            // take last position logits
-            val lastLogits =
-                logits[0][logits[0].size - 1]
-
-            val nextToken =
-                argmax(lastLogits)
-
-            // stop tokens
-            if(nextToken == tokenizer.eos())
-                return tokenizer.decode(
-                    generated.toLongArray()
-                )
-
-            generated.add(nextToken)
         }
 
-        return tokenizer.decode(
-            generated.toLongArray()
-        )
+        return output.toString()
     }
 
-    // --------------------------------------------------
-    // STREAMING VERSION
-    // --------------------------------------------------
+    // -------------------------------
+    // STREAMING (OFFICIAL WAY)
+    // -------------------------------
 
     fun replyStream(
         input: String,
@@ -88,60 +65,27 @@ class Phi3(val basePath: String) {
         val prompt =
             "<|user|>\n$input\n<|assistant|>"
 
-        val inputTokens = tokenizer.encode(prompt)
+        val params = GeneratorParams(model)
 
-        var generated = mutableListOf<Long>()
-        generated.addAll(inputTokens.toList())
+        params.setSearchOption("max_length", 256)
 
-        repeat(120) {
+        params.inputSequences =
+            tokenizer.encode(prompt)
 
-            val tensor = OnnxTensor.createTensor(
-                env,
-                longArrayOf(1, generated.size.toLong()),
-                generated.toLongArray()
-            )
+        val generator =
+            Generator(model, params)
 
-            val outputs = session.run(
-                mapOf("input_ids" to tensor)
-            )
+        while (generator.hasNext()) {
 
-            val logits =
-                outputs.get(0).value as Array<Array<FloatArray>>
+            generator.computeLogits()
+            generator.generateNextToken()
 
-            val lastLogits =
-                logits[0][logits[0].size - 1]
+            val token =
+                generator.getLastTokenInSequence(0)
 
-            val nextToken =
-                argmax(lastLogits)
-
-            if(nextToken == tokenizer.eos())
-                return
-
-            generated.add(nextToken)
-
-            // emit only new token
             onToken(
-                tokenizer.decode(
-                    longArrayOf(nextToken)
-                )
+                tokenizer.decode(token)
             )
         }
-    }
-
-    // --------------------------------------------------
-
-    private fun argmax(arr: FloatArray): Long {
-
-        var best = 0
-        var bestVal = arr[0]
-
-        for(i in arr.indices) {
-            if(arr[i] > bestVal) {
-                bestVal = arr[i]
-                best = i
-            }
-        }
-
-        return best.toLong()
     }
 }
