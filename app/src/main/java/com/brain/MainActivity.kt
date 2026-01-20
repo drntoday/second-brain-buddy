@@ -31,6 +31,8 @@ class MainActivity : Activity() {
 
         voice = Voice(this)
 
+        phi.load(filesDir.absolutePath + "/phi3/phi3-mini.onnx")
+
         // start background whisper service
         startService(Intent(this, WhisperService::class.java))
 
