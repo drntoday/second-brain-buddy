@@ -16,6 +16,7 @@ class MainActivity : Activity() {
     lateinit var voice: Voice
     val language = Language()
     val tone = Tone() // Added Tone class instance
+    val tutor = Tutor()
 
     lateinit var wake: WakeListener
 
@@ -77,6 +78,18 @@ class MainActivity : Activity() {
             ai = "Theek hai dost, maine yaad rakh liya 👍"
         }
 
+        // ---- TUTOR MODE ----
+        if(tutor.isStudy(userText)){
+
+            ai = tutor.teach(userText)
+
+            memory.save("study: $userText")
+
+            output.text = ai
+            voice.speak(ai, lang)
+            return
+        }
+        
         // Use search for latest info
         if (userText.contains("today") ||
             userText.contains("latest") ||
