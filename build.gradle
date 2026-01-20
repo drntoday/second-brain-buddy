@@ -1,15 +1,25 @@
 buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
+            repositories {
+                    google()
+                            mavenCentral()
+                                    maven { url "https://maven.microsoft.com" }
+                                        }
 
-    dependencies {
-        classpath "com.android.tools.build:gradle:8.2.0"
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0"
-    }
-}
+                                            dependencies {
+                                                    classpath "com.android.tools.build:gradle:8.2.0"
+                                                            classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0"
+                                                                }
+                                                                }
 
-task clean(type: Delete) {
-    delete rootProject.buildDir
-}
+                                                                allprojects {
+                                                                    repositories {
+                                                                            google()
+                                                                                    mavenCentral()
+                                                                                            maven { url "https://maven.microsoft.com" }
+                                                                                                }
+                                                                                                }
+
+                                                                                                // Simple clean task – Gradle 8 compatible
+                                                                                                task clean(type: Delete) {
+                                                                                                    delete rootProject.buildDir
+                                                                                                    }
