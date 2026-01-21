@@ -1,3 +1,10 @@
+# --- SOLMIE FIX: force JAVA_HOME from java binary ---
+if command -v java >/dev/null 2>&1; then
+  JAVA_BIN="$(command -v java)"
+  JAVA_HOME="$(cd "$(dirname "$JAVA_BIN")/.." && pwd)"
+  export JAVA_HOME
+fi
+
 #!/bin/sh
 
 #
