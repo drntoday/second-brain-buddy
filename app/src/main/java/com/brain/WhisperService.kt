@@ -19,12 +19,13 @@ class WhisperService : Service() {
     private lateinit var tts: TextToSpeech
     private lateinit var phi: Phi3
     private lateinit var voice: Voice
+    private lateinit var wake: WakeListener
 
     private val ui = Handler(Looper.getMainLooper())
     private lateinit var audioManager: AudioManager
     private lateinit var focusRequest: AudioFocusRequest
 
-    private var isListening = false
+    private var inConversation = false
 
     override fun onCreate() {
         super.onCreate()
@@ -36,17 +37,33 @@ class WhisperService : Service() {
         phi = Phi3(this)
         voice = Voice(this)
 
+        wake = WakeListener(this) {
+            ui.post {
+                if (!inConversation) {
+                    startConversation()
+                }
+            }
+        }
+
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts.language = Locale("hi", "IN")
-                startConversation()
+                setTtsListener()
+                startWakeMode()
             }
         }
     }
 
+    /* -------------------- MODES -------------------- */
+
+    private fun startWakeMode() {
+        inConversation = false
+        wake.start()
+    }
+
     private fun startConversation() {
-        if (isListening) return
-        isListening = true
+        inConversation = true
+        wake.stop()
 
         speak("Haan dost, bolo kya madad karun?") {
             listenOnce()
@@ -59,36 +76,46 @@ class WhisperService : Service() {
 
             Thread {
                 val answer = phi.reply(prompt)
-
                 ui.post {
                     speak(answer) {
-                        // After reply → listen again (safe loop)
-                        listenOnce()
+                        // After response → go back to wake mode
+                        startWakeMode()
                     }
                 }
             }.start()
         }
     }
 
+    /* -------------------- TTS -------------------- */
+
     private fun speak(text: String, onDone: (() -> Unit)? = null) {
         requestAudioFocus()
+
+        pendingOnDone = onDone
 
         tts.speak(
             text,
             TextToSpeech.QUEUE_FLUSH,
             null,
-            "SOLMIE_TTS"
+            "SOLMIE_UTTERANCE"
         )
+    }
 
+    private var pendingOnDone: (() -> Unit)? = null
+
+    private fun setTtsListener() {
         tts.setOnUtteranceProgressListener(
             SimpleUtteranceListener {
                 ui.post {
                     abandonAudioFocus()
-                    onDone?.invoke()
+                    pendingOnDone?.invoke()
+                    pendingOnDone = null
                 }
             }
         )
     }
+
+    /* -------------------- AUDIO -------------------- */
 
     private fun requestAudioFocus() {
         focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
@@ -107,10 +134,12 @@ class WhisperService : Service() {
         audioManager.abandonAudioFocusRequest(focusRequest)
     }
 
+    /* -------------------- NOTIFICATION -------------------- */
+
     private fun buildNotification(): Notification {
         return Notification.Builder(this, "solmie")
             .setContentTitle("Solmie is listening")
-            .setContentText("Talk naturally")
+            .setContentText("Say \"Solmie\" to talk")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .build()
     }
@@ -126,7 +155,7 @@ class WhisperService : Service() {
     }
 
     override fun onDestroy() {
-        isListening = false
+        wake.stop()
         tts.stop()
         tts.shutdown()
         super.onDestroy()
