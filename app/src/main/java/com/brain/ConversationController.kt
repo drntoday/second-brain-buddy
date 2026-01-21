@@ -48,10 +48,14 @@ class ConversationController(
         }
     }
 
+    /**
+     * 🔥 STREAMING + SEARCH + MEMORY SAFE
+     * (ONLY METHOD REPLACED)
+     */
     private fun listenOnce() {
         voice.listen { text ->
 
-            // 🔥 Interrupt any ongoing speech
+            // 🔥 Immediate barge-in
             speech.interrupt()
 
             val lang = LanguageDetector.detect(text)
@@ -67,15 +71,35 @@ class ConversationController(
 
                 val prompt = buildPrompt(lang, grounding)
 
-                val answer = phi.reply(prompt)
+                val buffer = StringBuilder()
+                isStreaming.set(true)
 
-                if (!inConversation.get()) return@Thread
+                phi.streamReply(prompt) { token ->
 
-                memory.addAssistant(answer)
+                    // ⛔ Stop immediately if interrupted
+                    if (!inConversation.get() || !isStreaming.get()) {
+                        false
+                    } else {
+                        buffer.append(token)
+
+                        ui.post {
+                            speech.setLanguage(lang)
+                            speech.speak(token)
+                        }
+
+                        true
+                    }
+                }
+
+                val finalAnswer = buffer.toString().trim()
+
+                if (finalAnswer.isNotEmpty()) {
+                    memory.addAssistant(finalAnswer)
+                }
 
                 ui.post {
-                    speech.setLanguage(lang)
-                    streamAnswer(answer)
+                    isStreaming.set(false)
+                    startWakeMode()
                 }
             }.start()
         }
@@ -123,34 +147,6 @@ class ConversationController(
 
             Now reply naturally, briefly, and clearly.
         """.trimIndent()
-    }
-
-    /* ---------------- STREAMING ---------------- */
-
-    private fun streamAnswer(answer: String) {
-        isStreaming.set(true)
-
-        val chunks = TextChunker.chunk(answer)
-        val iterator = chunks.iterator()
-
-        fun speakNext() {
-            if (!iterator.hasNext() || !isStreaming.get()) {
-                isStreaming.set(false)
-                startWakeMode()
-                return
-            }
-
-            speech.speak(iterator.next()) {
-                if (!speech.isSpeaking()) {
-                    isStreaming.set(false)
-                    startWakeMode()
-                } else {
-                    speakNext()
-                }
-            }
-        }
-
-        speakNext()
     }
 
     /* ---------------- STOP ---------------- */
