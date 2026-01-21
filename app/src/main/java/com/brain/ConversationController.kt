@@ -55,7 +55,9 @@ class ConversationController(
 
                 ui.post {
                     speech.setLanguage(lang)
-                    speech.speak(answer) {
+                    val chunks = TextChunker.chunk(answer)
+
+                    speakChunksSequentially(chunks) {
                         startWakeMode()
                     }
                 }
@@ -63,6 +65,31 @@ class ConversationController(
         }
     }
 
+    private fun speakChunksSequentially(
+        chunks: List<String>,
+        onComplete: () -> Unit
+    ) {
+        if (chunks.isEmpty()) {
+            onComplete()
+            return
+        }
+
+        val iterator = chunks.iterator()
+
+        fun speakNext() {
+            if (!iterator.hasNext()) {
+                onComplete()
+                return
+            }
+
+            speech.speak(iterator.next()) {
+                speakNext()
+            }
+        }
+
+        speakNext()
+    }
+    
     fun stop() {
         if (::wake.isInitialized) wake.stop()
     }
