@@ -9,35 +9,54 @@ class Phi3(private val ctx: Context) {
 
     private val modelDir = File(ctx.filesDir, "phi35")
 
-    private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
+    private val env = OrtEnvironment.getEnvironment()
     private val session: OrtSession
     private val tokenizer: Tokenizer
     private val generator: Generator
 
     init {
-        val modelPath = File(modelDir, "model.onnx").absolutePath
-        val tokenizerPath = File(modelDir, "tokenizer.json").absolutePath
-        val genConfigPath = File(modelDir, "genai_config.json").absolutePath
-
-        require(File(modelPath).exists()) { "model.onnx missing" }
-        require(File(tokenizerPath).exists()) { "tokenizer.json missing" }
-        require(File(genConfigPath).exists()) { "genai_config.json missing" }
-
         val opts = OrtSession.SessionOptions().apply {
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
             setIntraOpNumThreads(4)
         }
 
-        session = env.createSession(modelPath, opts)
-        tokenizer = Tokenizer.fromFile(tokenizerPath)
+        session = env.createSession(
+            File(modelDir, "model.onnx").absolutePath,
+            opts
+        )
 
-        val genConfig = GeneratorConfig.fromFile(genConfigPath)
+        tokenizer = Tokenizer.fromFile(
+            File(modelDir, "tokenizer.json").absolutePath
+        )
+
+        val genConfig = GeneratorConfig.fromFile(
+            File(modelDir, "genai_config.json").absolutePath
+        )
+
         generator = Generator(session, genConfig)
     }
 
-    @Synchronized
-    fun reply(prompt: String): String {
+    /* --------- NON-STREAMING (kept for safety) --------- */
 
+    fun reply(prompt: String): String {
+        val sb = StringBuilder()
+
+        streamReply(prompt) { token ->
+            sb.append(token)
+            true
+        }
+
+        return sb.toString()
+            .replace("<|assistant|>", "")
+            .trim()
+    }
+
+    /* --------- STREAMING CORE --------- */
+
+    fun streamReply(
+        prompt: String,
+        onToken: (String) -> Boolean
+    ) {
         val fullPrompt = """
             <|system|>
             You are Solmie, a friendly helpful assistant.
@@ -47,24 +66,19 @@ class Phi3(private val ctx: Context) {
             <|assistant|>
         """.trimIndent()
 
-        val inputTokens = tokenizer.encode(fullPrompt)
-        generator.appendTokens(inputTokens)
+        val tokens = tokenizer.encode(fullPrompt)
+        generator.appendTokens(tokens)
 
-        val output = StringBuilder()
+        try {
+            while (!generator.isDone) {
+                val tokenId = generator.generateNextToken()
+                val text = tokenizer.decode(listOf(tokenId))
 
-        while (!generator.isDone) {
-            val token = generator.generateNextToken()
-            val text = tokenizer.decode(listOf(token))
-            output.append(text)
-
-            if (output.length > 8000) break
+                // Stop immediately if consumer says so
+                if (!onToken(text)) break
+            }
+        } finally {
+            generator.reset()
         }
-
-        generator.reset()
-
-        return output.toString()
-            .replace("<|assistant|>", "")
-            .replace("<|end|>", "")
-            .trim()
     }
 }
