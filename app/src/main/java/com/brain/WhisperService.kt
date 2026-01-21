@@ -20,22 +20,61 @@ class WhisperService : Service() {
     private lateinit var phi: Phi3
     private lateinit var voice: Voice
     private lateinit var wake: WakeListener
+    private lateinit var downloader: ModelDownloader
 
     private val ui = Handler(Looper.getMainLooper())
     private lateinit var audioManager: AudioManager
     private lateinit var focusRequest: AudioFocusRequest
 
     private var inConversation = false
+    private var modelReady = false
 
     override fun onCreate() {
         super.onCreate()
 
         createNotificationChannel()
-        startForeground(1, buildNotification())
+        startForeground(1, buildNotification("Preparing Solmie brain…"))
 
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
-        phi = Phi3(this)
         voice = Voice(this)
+        downloader = ModelDownloader(this)
+
+        // Init TTS first (lightweight)
+        tts = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                tts.language = Locale("hi", "IN")
+                setTtsListener()
+                prepareModel()
+            }
+        }
+    }
+
+    /* -------------------- MODEL PREP -------------------- */
+
+    private fun prepareModel() {
+        Thread {
+            if (!downloader.isReady()) {
+                updateNotification("Downloading Solmie brain…")
+                downloader.downloadAll { /* optional progress */ }
+            }
+
+            // Now model is guaranteed ready
+            phi = Phi3(this)
+            modelReady = true
+
+            ui.post {
+                startWakeMode()
+                updateNotification("Solmie is listening")
+            }
+        }.start()
+    }
+
+    /* -------------------- MODES -------------------- */
+
+    private fun startWakeMode() {
+        if (!modelReady) return
+
+        inConversation = false
 
         wake = WakeListener(this) {
             ui.post {
@@ -44,20 +83,6 @@ class WhisperService : Service() {
                 }
             }
         }
-
-        tts = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts.language = Locale("hi", "IN")
-                setTtsListener()
-                startWakeMode()
-            }
-        }
-    }
-
-    /* -------------------- MODES -------------------- */
-
-    private fun startWakeMode() {
-        inConversation = false
         wake.start()
     }
 
@@ -78,7 +103,6 @@ class WhisperService : Service() {
                 val answer = phi.reply(prompt)
                 ui.post {
                     speak(answer) {
-                        // After response → go back to wake mode
                         startWakeMode()
                     }
                 }
@@ -88,9 +112,10 @@ class WhisperService : Service() {
 
     /* -------------------- TTS -------------------- */
 
+    private var pendingOnDone: (() -> Unit)? = null
+
     private fun speak(text: String, onDone: (() -> Unit)? = null) {
         requestAudioFocus()
-
         pendingOnDone = onDone
 
         tts.speak(
@@ -100,8 +125,6 @@ class WhisperService : Service() {
             "SOLMIE_UTTERANCE"
         )
     }
-
-    private var pendingOnDone: (() -> Unit)? = null
 
     private fun setTtsListener() {
         tts.setOnUtteranceProgressListener(
@@ -136,12 +159,17 @@ class WhisperService : Service() {
 
     /* -------------------- NOTIFICATION -------------------- */
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(text: String): Notification {
         return Notification.Builder(this, "solmie")
-            .setContentTitle("Solmie is listening")
-            .setContentText("Say \"Solmie\" to talk")
+            .setContentTitle("Solmie – Second Brain")
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .build()
+    }
+
+    private fun updateNotification(text: String) {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(1, buildNotification(text))
     }
 
     private fun createNotificationChannel() {
