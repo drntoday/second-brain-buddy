@@ -1,47 +1,89 @@
 package com.brain
 
 import android.content.Context
-import android.os.Bundle
-import android.speech.RecognitionListener
-import android.speech.SpeechRecognizer
-import android.speech.RecognizerIntent
 import android.content.Intent
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import java.util.*
 
-class WakeListener(val ctx: Context, val onWake: () -> Unit) {
+class WakeListener(
+    private val ctx: Context,
+    private val onWake: () -> Unit
+) {
 
-        private val sr = SpeechRecognizer.createSpeechRecognizer(ctx)
+    private var recognizer: SpeechRecognizer? = null
+    private val ui = Handler(Looper.getMainLooper())
 
-            fun start() {
+    fun start() {
+        stop()
 
-                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+        recognizer = SpeechRecognizer.createSpeechRecognizer(ctx)
 
-                                sr.setRecognitionListener(object : RecognitionListener {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+            )
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
+        }
 
-                                                override fun onResults(results: Bundle?) {
-                                                                    val list = results
-                                                                                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+        recognizer?.setRecognitionListener(object : RecognitionListener {
 
-                                                                                                        val text = list?.joinToString(" ")?.lowercase() ?: ""
+            override fun onResults(results: Bundle?) {
+                val list =
+                    results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.map { it.lowercase(Locale.getDefault()) }
+                        ?: emptyList()
 
-                                                                                                                        if (text.contains("solmie") ||
-                                                                                                                                            text.contains("solmi") ||
-                                                                                                                                                                text.contains("सोमी") ||
-                                                                                                                                                                                    text.contains("सोल्मी")) {
+                val hit = list.any {
+                    it.contains("solmie") ||
+                    it.contains("solmi") ||
+                    it.contains("सोमी") ||
+                    it.contains("सोल्मी")
+                }
 
-                                                                                                                                                                                                            onWake()
-                                                                                                                                                                                    }
-                                                }
+                if (hit) {
+                    onWake()
+                }
 
-                                                            override fun onReadyForSpeech(p0: Bundle?) {}
-                                                                        override fun onBeginningOfSpeech() {}
-                                                                                    override fun onRmsChanged(p0: Float) {}
-                                                                                                override fun onBufferReceived(p0: ByteArray?) {}
-                                                                                                            override fun onEndOfSpeech() {}
-                                                                                                                        override fun onError(p0: Int) {}
-                                                                                                                                    override fun onPartialResults(p0: Bundle?) {}
-                                                                                                                                                override fun onEvent(p0: Int, p1: Bundle?) {}
-                                })
-
-                                        sr.startListening(intent)
+                restart()
             }
+
+            override fun onError(error: Int) {
+                restart()
+            }
+
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+
+        recognizer?.startListening(intent)
+    }
+
+    private fun restart() {
+        ui.postDelayed({
+            start()
+        }, 500)
+    }
+
+    fun stop() {
+        recognizer?.apply {
+            stopListening()
+            cancel()
+            destroy()
+        }
+        recognizer = null
+    }
 }
