@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import java.util.Locale
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 class SpeechController(private val ctx: Context) {
@@ -17,29 +18,31 @@ class SpeechController(private val ctx: Context) {
     private lateinit var focusRequest: AudioFocusRequest
 
     private val ui = Handler(Looper.getMainLooper())
-    private var pendingOnDone: (() -> Unit)? = null
 
-    // Speaking state (for interruption / barge-in)
+    private var pendingOnDone: (() -> Unit)? = null
+    private var activeUtteranceId: String? = null
+
     private val isSpeaking = AtomicBoolean(false)
+
+    /* ---------------- INIT ---------------- */
 
     fun initTts(onReady: () -> Unit) {
         audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
         tts = TextToSpeech(ctx) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                // Safe universal default (will be overridden dynamically)
-                tts.language = Locale.US
+                setLanguage(LanguageDetector.Lang.HINGLISH)
                 setTtsListener()
                 onReady()
             }
         }
     }
 
-    /**
-     * Safely set TTS language with fallback
-     */
+    /* ---------------- LANGUAGE ---------------- */
+
     fun setLanguage(lang: LanguageDetector.Lang) {
         val result = tts.setLanguage(lang.locale)
+
         if (
             result == TextToSpeech.LANG_MISSING_DATA ||
             result == TextToSpeech.LANG_NOT_SUPPORTED
@@ -48,12 +51,17 @@ class SpeechController(private val ctx: Context) {
         }
     }
 
-    /**
-     * Speak text (interrupt-safe)
-     */
+    /* ---------------- SPEAK ---------------- */
+
     fun speak(text: String, onDone: (() -> Unit)? = null) {
         ui.post {
+            // Cancel any ongoing speech first
+            interruptInternal(callOnDone = false)
+
             requestAudioFocus()
+
+            val utteranceId = UUID.randomUUID().toString()
+            activeUtteranceId = utteranceId
             pendingOnDone = onDone
             isSpeaking.set(true)
 
@@ -61,39 +69,64 @@ class SpeechController(private val ctx: Context) {
                 text,
                 TextToSpeech.QUEUE_FLUSH,
                 null,
-                "SOLMIE_UTTERANCE"
+                utteranceId
             )
         }
     }
 
-    /**
-     * User barge-in support
-     */
+    /* ---------------- INTERRUPTION ---------------- */
+
     fun interrupt() {
         ui.post {
-            if (isSpeaking.get()) {
-                tts.stop()
-                abandonAudioFocus()
-                isSpeaking.set(false)
-                pendingOnDone = null
-            }
+            interruptInternal(callOnDone = true)
+        }
+    }
+
+    private fun interruptInternal(callOnDone: Boolean) {
+        if (!isSpeaking.get()) return
+
+        try {
+            tts.stop()
+        } catch (_: Exception) {
+        }
+
+        abandonAudioFocus()
+        isSpeaking.set(false)
+
+        val cb = pendingOnDone
+        pendingOnDone = null
+        activeUtteranceId = null
+
+        if (callOnDone) {
+            cb?.invoke()
         }
     }
 
     fun isSpeaking(): Boolean = isSpeaking.get()
 
+    /* ---------------- TTS CALLBACK ---------------- */
+
     private fun setTtsListener() {
         tts.setOnUtteranceProgressListener(
-            SimpleUtteranceListener {
+            SimpleUtteranceListener { finishedId ->
                 ui.post {
-                    isSpeaking.set(false)
+                    // Ignore callbacks from cancelled / old utterances
+                    if (finishedId != activeUtteranceId) return@post
+
                     abandonAudioFocus()
-                    pendingOnDone?.invoke()
+                    isSpeaking.set(false)
+
+                    val cb = pendingOnDone
                     pendingOnDone = null
+                    activeUtteranceId = null
+
+                    cb?.invoke()
                 }
             }
         )
     }
+
+    /* ---------------- AUDIO ---------------- */
 
     private fun requestAudioFocus() {
         focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
@@ -109,13 +142,21 @@ class SpeechController(private val ctx: Context) {
     }
 
     private fun abandonAudioFocus() {
-        audioManager.abandonAudioFocusRequest(focusRequest)
+        try {
+            audioManager.abandonAudioFocusRequest(focusRequest)
+        } catch (_: Exception) {
+        }
     }
+
+    /* ---------------- SHUTDOWN ---------------- */
 
     fun shutdown() {
         ui.post {
-            tts.stop()
-            tts.shutdown()
+            interruptInternal(callOnDone = false)
+            try {
+                tts.shutdown()
+            } catch (_: Exception) {
+            }
         }
     }
 }
