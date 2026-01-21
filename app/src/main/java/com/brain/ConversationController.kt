@@ -14,7 +14,7 @@ class ConversationController(
 
     private val voice = Voice(ctx)
     private val phi = Phi3(ctx)
-
+    private val search = Search()
     private lateinit var wake: WakeListener
     private var inConversation = false
 
@@ -49,39 +49,39 @@ class ConversationController(
     private fun listenOnce() {
         voice.listen { text ->
 
-            // 🔥 CUT SOLMIE MID-SPEECH
-            if (speech.isSpeaking()) {
-                speech.interrupt()
-            }
-
             val lang = LanguageDetector.detect(text)
             memory.addUser(text)
-            ...
-        }
-
-            val lang = LanguageDetector.detect(text)
-            memory.addUser(text)
-
-            val prompt = """
-                ${lang.prompt}
-
-                Conversation so far:
-                ${memory.context()}
-
-                Now reply naturally to the user.
-            """.trimIndent()
 
             Thread {
-                val answer = phi.reply(prompt)
+                // 🔍 Decide if search is needed
+                val webInfo = if (needsSearch(text)) {
+                    search.web(text)
+                } else ""
 
-                // ✅ ADD ASSISTANT MEMORY ONCE (IMPORTANT)
+                val wikiInfo = if (needsWiki(text)) {
+                    search.wiki(text)
+                } else ""
+
+                val prompt = """
+                    ${lang.prompt}
+
+                    Conversation so far:
+                    ${memory.context()}
+
+                    External knowledge (if useful):
+                    Web: $webInfo
+                    Wiki: $wikiInfo
+
+                    Now reply clearly and naturally.
+                """.trimIndent()
+
+                val answer = phi.reply(prompt)
                 memory.addAssistant(answer)
 
                 ui.post {
                     speech.setLanguage(lang)
 
                     val chunks = TextChunker.chunk(answer)
-
                     speakChunksSequentially(chunks) {
                         startWakeMode()
                     }
