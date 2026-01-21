@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 class SpeechController(private val ctx: Context) {
 
@@ -18,12 +19,14 @@ class SpeechController(private val ctx: Context) {
     private val ui = Handler(Looper.getMainLooper())
     private var pendingOnDone: (() -> Unit)? = null
 
+    // 🔥 NEW: speaking state
+    private val isSpeaking = AtomicBoolean(false)
+
     fun initTts(onReady: () -> Unit) {
         audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
         tts = TextToSpeech(ctx) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                // Default safe language
                 setLanguage(LanguageDetector.Lang.HINGLISH)
                 setTtsListener()
                 onReady()
@@ -37,18 +40,22 @@ class SpeechController(private val ctx: Context) {
     fun setLanguage(lang: LanguageDetector.Lang) {
         val result = tts.setLanguage(lang.locale)
 
-        if (result == TextToSpeech.LANG_MISSING_DATA ||
+        if (
+            result == TextToSpeech.LANG_MISSING_DATA ||
             result == TextToSpeech.LANG_NOT_SUPPORTED
         ) {
-            // 🔁 Fallback to English
             tts.setLanguage(Locale.US)
         }
     }
 
+    /**
+     * Speak text (interrupt-safe)
+     */
     fun speak(text: String, onDone: (() -> Unit)? = null) {
         ui.post {
             requestAudioFocus()
             pendingOnDone = onDone
+            isSpeaking.set(true)
 
             tts.speak(
                 text,
@@ -59,10 +66,30 @@ class SpeechController(private val ctx: Context) {
         }
     }
 
+    /**
+     * 🔥 NEW: User barge-in support
+     */
+    fun interrupt() {
+        ui.post {
+            if (isSpeaking.get()) {
+                tts.stop()
+                abandonAudioFocus()
+                isSpeaking.set(false)
+                pendingOnDone = null
+            }
+        }
+    }
+
+    /**
+     * 🔥 NEW: Query speaking state
+     */
+    fun isSpeaking(): Boolean = isSpeaking.get()
+
     private fun setTtsListener() {
         tts.setOnUtteranceProgressListener(
             SimpleUtteranceListener {
                 ui.post {
+                    isSpeaking.set(false)
                     abandonAudioFocus()
                     pendingOnDone?.invoke()
                     pendingOnDone = null
