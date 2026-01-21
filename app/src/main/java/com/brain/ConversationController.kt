@@ -49,6 +49,16 @@ class ConversationController(
     private fun listenOnce() {
         voice.listen { text ->
 
+            // 🔥 CUT SOLMIE MID-SPEECH
+            if (speech.isSpeaking()) {
+                speech.interrupt()
+            }
+
+            val lang = LanguageDetector.detect(text)
+            memory.addUser(text)
+            ...
+        }
+
             val lang = LanguageDetector.detect(text)
             memory.addUser(text)
 
