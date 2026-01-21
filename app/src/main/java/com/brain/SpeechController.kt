@@ -4,8 +4,10 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
-import java.util.*
+import java.util.Locale
 
 class SpeechController(private val ctx: Context) {
 
@@ -13,6 +15,7 @@ class SpeechController(private val ctx: Context) {
     private lateinit var audioManager: AudioManager
     private lateinit var focusRequest: AudioFocusRequest
 
+    private val ui = Handler(Looper.getMainLooper())
     private var pendingOnDone: (() -> Unit)? = null
 
     fun initTts(onReady: () -> Unit) {
@@ -20,36 +23,50 @@ class SpeechController(private val ctx: Context) {
 
         tts = TextToSpeech(ctx) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts.language = Locale("hi", "IN")
+                // Default safe language
+                setLanguage(LanguageDetector.Lang.HINGLISH)
                 setTtsListener()
                 onReady()
             }
         }
     }
 
+    /**
+     * Safely set TTS language with fallback
+     */
     fun setLanguage(lang: LanguageDetector.Lang) {
-        val parts = lang.locale.split("-")
-        tts.language = Locale(parts[0], parts[1])
+        val result = tts.setLanguage(lang.locale)
+
+        if (result == TextToSpeech.LANG_MISSING_DATA ||
+            result == TextToSpeech.LANG_NOT_SUPPORTED
+        ) {
+            // 🔁 Fallback to English
+            tts.setLanguage(Locale.US)
+        }
     }
 
     fun speak(text: String, onDone: (() -> Unit)? = null) {
-        requestAudioFocus()
-        pendingOnDone = onDone
+        ui.post {
+            requestAudioFocus()
+            pendingOnDone = onDone
 
-        tts.speak(
-            text,
-            TextToSpeech.QUEUE_FLUSH,
-            null,
-            "SOLMIE_UTTERANCE"
-        )
+            tts.speak(
+                text,
+                TextToSpeech.QUEUE_FLUSH,
+                null,
+                "SOLMIE_UTTERANCE"
+            )
+        }
     }
 
     private fun setTtsListener() {
         tts.setOnUtteranceProgressListener(
             SimpleUtteranceListener {
-                abandonAudioFocus()
-                pendingOnDone?.invoke()
-                pendingOnDone = null
+                ui.post {
+                    abandonAudioFocus()
+                    pendingOnDone?.invoke()
+                    pendingOnDone = null
+                }
             }
         )
     }
@@ -72,7 +89,9 @@ class SpeechController(private val ctx: Context) {
     }
 
     fun shutdown() {
-        tts.stop()
-        tts.shutdown()
+        ui.post {
+            tts.stop()
+            tts.shutdown()
+        }
     }
 }
