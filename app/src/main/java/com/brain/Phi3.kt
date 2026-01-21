@@ -1,74 +1,70 @@
 package com.brain
 
 import android.content.Context
+import ai.onnxruntime.*
+import ai.onnxruntime.genai.*
 import java.io.File
 
-/**
- * Phi-3.5 wrapper
- *
- * - Uses real ONNX GenAI if available
- * - Falls back safely if GenAI runtime is missing
- * - Never crashes app or build
- */
 class Phi3(private val ctx: Context) {
 
     private val modelDir = File(ctx.filesDir, "phi35")
 
-    private val engine: Engine
+    private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
+    private val session: OrtSession
+    private val tokenizer: Tokenizer
+    private val generator: Generator
 
     init {
-        engine = try {
-            if (isModelReady()) {
-                OnnxEngine(modelDir)
-            } else {
-                StubEngine()
-            }
-        } catch (e: Throwable) {
-            // Absolute safety net
-            StubEngine()
+        val modelPath = File(modelDir, "model.onnx").absolutePath
+        val tokenizerPath = File(modelDir, "tokenizer.json").absolutePath
+        val genConfigPath = File(modelDir, "genai_config.json").absolutePath
+
+        require(File(modelPath).exists()) { "model.onnx missing" }
+        require(File(tokenizerPath).exists()) { "tokenizer.json missing" }
+        require(File(genConfigPath).exists()) { "genai_config.json missing" }
+
+        val opts = OrtSession.SessionOptions().apply {
+            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+            setIntraOpNumThreads(4)
         }
+
+        session = env.createSession(modelPath, opts)
+        tokenizer = Tokenizer.fromFile(tokenizerPath)
+
+        val genConfig = GeneratorConfig.fromFile(genConfigPath)
+        generator = Generator(session, genConfig)
     }
 
+    @Synchronized
     fun reply(prompt: String): String {
-        return engine.reply(prompt)
-    }
 
-    private fun isModelReady(): Boolean {
-        return File(modelDir, "model.onnx").exists() &&
-               File(modelDir, "model.onnx.data").exists() &&
-               File(modelDir, "tokenizer.json").exists() &&
-               File(modelDir, "genai_config.json").exists()
-    }
-}
+        val fullPrompt = """
+            <|system|>
+            You are Solmie, a friendly helpful assistant.
+            Reply naturally, briefly, and clearly.
+            <|user|>
+            $prompt
+            <|assistant|>
+        """.trimIndent()
 
-/* ========================================================= */
-/* ===================== ENGINE LAYER ====================== */
-/* ========================================================= */
+        val inputTokens = tokenizer.encode(fullPrompt)
+        generator.appendTokens(inputTokens)
 
-private interface Engine {
-    fun reply(prompt: String): String
-}
+        val output = StringBuilder()
 
-/* ---------------- REAL ONNX ENGINE ---------------- */
+        while (!generator.isDone) {
+            val token = generator.generateNextToken()
+            val text = tokenizer.decode(listOf(token))
+            output.append(text)
 
-private class OnnxEngine(modelDir: File) : Engine {
+            if (output.length > 8000) break
+        }
 
-    // Lazy-loaded via reflection to avoid hard dependency
-    private val impl: Any
+        generator.reset()
 
-    init {
-        impl = Phi3GenAiImpl(modelDir)
-    }
-
-    override fun reply(prompt: String): String {
-        return (impl as Phi3GenAiImpl).reply(prompt)
-    }
-}
-
-/* ---------------- SAFE FALLBACK ---------------- */
-
-private class StubEngine : Engine {
-    override fun reply(prompt: String): String {
-        return "Main abhi learning mode me hoon 🙂 Aapne kaha: $prompt"
+        return output.toString()
+            .replace("<|assistant|>", "")
+            .replace("<|end|>", "")
+            .trim()
     }
 }
