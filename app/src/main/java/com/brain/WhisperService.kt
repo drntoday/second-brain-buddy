@@ -54,20 +54,22 @@ class WhisperService : Service() {
     private fun prepareModel() {
         Thread {
             if (!downloader.isReady()) {
-                updateNotification("Downloading Solmie brain…")
-                downloader.downloadAll { /* optional progress */ }
+                downloader.downloadAll { percent ->
+                    ui.post {
+                        updateNotification("Downloading Solmie brain… $percent%")
+                    }
+                }
             }
 
-            // Now model is guaranteed ready
             phi = Phi3(this)
             modelReady = true
 
             ui.post {
-                startWakeMode()
                 updateNotification("Solmie is listening")
+                startWakeMode()
             }
         }.start()
-    }
+     }
 
     /* -------------------- MODES -------------------- */
 
