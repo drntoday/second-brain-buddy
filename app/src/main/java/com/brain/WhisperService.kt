@@ -6,11 +6,18 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
+import android.os.Looper
+import android.os.Handler
+import android.speech.tts.TextToSpeech
+import java.util.*
 
 class WhisperService : Service() {
 
-    private lateinit var conversation: WhisperConversationController
-    private lateinit var audio: WhisperAudioController
+    private lateinit var speech: SpeechController
+    private lateinit var convo: ConversationController
+    private lateinit var downloader: ModelDownloader
+
+    private val ui = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
         super.onCreate()
@@ -18,27 +25,40 @@ class WhisperService : Service() {
         createNotificationChannel()
         startForeground(1, buildNotification("Preparing Solmie brain…"))
 
-        audio = WhisperAudioController(this)
-        conversation = WhisperConversationController(
-            service = this,
-            audio = audio,
-            onNotification = { updateNotification(it) }
-        )
+        downloader = ModelDownloader(this)
 
-        audio.init {
-            conversation.prepareModel()
+        speech = SpeechController(this)
+
+        // Init TTS first
+        speech.initTts {
+            prepareModel()
         }
     }
 
-    override fun onDestroy() {
-        conversation.destroy()
-        audio.destroy()
-        super.onDestroy()
+    /* -------------------- MODEL -------------------- */
+
+    private fun prepareModel() {
+        Thread {
+            if (!downloader.isReady()) {
+                downloader.downloadAll { percent ->
+                    ui.post {
+                        updateNotification("Downloading Solmie brain… $percent%")
+                    }
+                }
+            }
+
+            ui.post {
+                updateNotification("Solmie is listening")
+                convo = ConversationController(
+                    ctx = this,
+                    speech = speech
+                )
+                convo.startWakeMode()
+            }
+        }.start()
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    /* ---------------- NOTIFICATION ---------------- */
+    /* -------------------- NOTIFICATION -------------------- */
 
     private fun buildNotification(text: String): Notification {
         return Notification.Builder(this, "solmie")
@@ -62,4 +82,12 @@ class WhisperService : Service() {
         getSystemService(NotificationManager::class.java)
             .createNotificationChannel(channel)
     }
+
+    override fun onDestroy() {
+        convo.stop()
+        speech.shutdown()
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
 }
