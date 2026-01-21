@@ -1,12 +1,26 @@
 package com.brain
 
 import android.content.Context
+import kotlin.random.Random
 
-class Phi3(val ctx: Context) {
+class Phi3(private val ctx: Context) {
 
-        fun reply(prompt: String): String {
+    private val fillers = listOf(
+        "Samajh gaya dost.",
+        "Theek hai, sun raha hoon.",
+        "Accha sawal hai.",
+        "Haan, bataata hoon.",
+        "Sochne do zara."
+    )
 
-                    // TEMP STUB – real ONNX baad me dalenge
-                            return "Main abhi simple mode me hoon. Aapne bola: $prompt"
-        }
+    fun reply(userText: String): String {
+
+        // 🧠 Simulate thinking (important for mic stability)
+        Thread.sleep(700)
+
+        val filler = fillers.random()
+
+        return "$filler Aapne kaha: \"$userText\".\n" +
+               "Abhi main basic mode mein hoon, lekin dheere dheere aur smart ban jaunga 🙂"
+    }
 }
