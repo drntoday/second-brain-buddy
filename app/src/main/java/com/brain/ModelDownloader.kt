@@ -2,7 +2,6 @@ package com.brain
 
 import android.content.Context
 import java.io.File
-import java.net.HttpURLConnection
 import java.net.URL
 
 class ModelDownloader(private val ctx: Context) {
@@ -10,50 +9,55 @@ class ModelDownloader(private val ctx: Context) {
     private val base =
         "https://huggingface.co/nvidia/Phi-3.5-mini-Instruct-ONNX-INT4/resolve/main/"
 
-    private val files = listOf(
-        "model.onnx",
-        "model.onnx.data",
-        "genai_config.json",
-        "tokenizer.json",
-        "tokenizer_config.json",
-        "special_tokens_map.json"
-    )
-
-    fun modelDir(): File =
-        File(ctx.filesDir, "phi35").apply { mkdirs() }
-
-    fun isReady(): Boolean {
-        val dir = modelDir()
-        return files.all { File(dir, it).exists() && File(dir, it).length() > 1000 }
+    fun modelDir(): File {
+        val f = File(ctx.filesDir, "phi35")
+        if (!f.exists()) f.mkdirs()
+        return f
     }
 
-    /** MUST be called from background thread */
-    fun downloadAll(progress: (Int) -> Unit) {
-        progress(0)
+    fun isReady(): Boolean {
+        val f = File(modelDir(), "model.onnx.data")
+        return f.exists() && f.length() > 2_000_000_000
+    }
 
-        download("model.onnx", 10)
-        download("model.onnx_data", 50)
+    fun downloadAll(progress: (Int) -> Unit) {
+
+        download("model.onnx", 0, 20, progress)
+
+        download("model.onnx_data", 20, 70, progress)
         renameUnderscore()
-        download("genai_config.json", 70)
-        download("tokenizer.json", 80)
-        download("tokenizer_config.json", 90)
-        download("special_tokens_map.json", 100)
+
+        download("genai_config.json", 70, 80, progress)
+        download("tokenizer.json", 80, 90, progress)
+        download("tokenizer_config.json", 90, 95, progress)
+        download("special_tokens_map.json", 95, 100, progress)
 
         progress(100)
     }
 
-    private fun download(name: String, progressMark: Int) {
+    private fun download(
+        name: String,
+        start: Int,
+        end: Int,
+        progress: (Int) -> Unit
+    ) {
         val out = File(modelDir(), name)
-        if (out.exists() && out.length() > 1024 * 1024) return
+        if (out.exists() && out.length() > 1000) return
 
-        val url = URL(base + name)
-        val conn = url.openConnection() as HttpURLConnection
-        conn.connectTimeout = 15_000
-        conn.readTimeout = 30_000
-
-        conn.inputStream.use { input ->
+        URL(base + name).openStream().use { input ->
             out.outputStream().use { output ->
-                input.copyTo(output)
+                val buf = ByteArray(8 * 1024)
+                var read: Int
+                var total = 0L
+                val sizeGuess = 500_000_000L
+
+                while (input.read(buf).also { read = it } != -1) {
+                    output.write(buf, 0, read)
+                    total += read
+
+                    val p = start + ((total * (end - start)) / sizeGuess).toInt()
+                    progress(p.coerceAtMost(end))
+                }
             }
         }
     }
