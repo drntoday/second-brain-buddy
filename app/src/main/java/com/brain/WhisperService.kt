@@ -5,60 +5,89 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.Handler
-import android.speech.tts.TextToSpeech
-import java.util.*
+import java.util.concurrent.atomic.AtomicBoolean
 
 class WhisperService : Service() {
 
     private lateinit var speech: SpeechController
-    private lateinit var convo: ConversationController
     private lateinit var downloader: ModelDownloader
+    private var convo: ConversationController? = null
 
     private val ui = Handler(Looper.getMainLooper())
+    private val started = AtomicBoolean(false)
+    private val destroyed = AtomicBoolean(false)
+
+    /* ---------------- SERVICE LIFECYCLE ---------------- */
 
     override fun onCreate() {
         super.onCreate()
+
+        // Prevent double init
+        if (started.getAndSet(true)) return
 
         createNotificationChannel()
         startForeground(1, buildNotification("Preparing Solmie brain…"))
 
         downloader = ModelDownloader(this)
-
         speech = SpeechController(this)
 
-        // Init TTS first
+        // Init TTS first (fast)
         speech.initTts {
             prepareModel()
         }
     }
 
-    /* -------------------- MODEL -------------------- */
+    override fun onDestroy() {
+        destroyed.set(true)
+
+        convo?.stop()
+        convo = null
+
+        speech.shutdown()
+
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    /* ---------------- MODEL PREP ---------------- */
 
     private fun prepareModel() {
         Thread {
-            if (!downloader.isReady()) {
-                downloader.downloadAll { percent ->
-                    ui.post {
-                        updateNotification("Downloading Solmie brain… $percent%")
+            try {
+                if (!downloader.isReady()) {
+                    downloader.downloadAll { percent ->
+                        ui.post {
+                            updateNotification("Downloading Solmie brain… $percent%")
+                        }
                     }
                 }
-            }
 
-            ui.post {
-                updateNotification("Solmie is listening")
-                convo = ConversationController(
-                    ctx = this,
-                    speech = speech
-                )
-                convo.startWakeMode()
+                if (destroyed.get()) return@Thread
+
+                ui.post {
+                    updateNotification("Solmie is listening")
+
+                    convo = ConversationController(
+                        ctx = this,
+                        speech = speech
+                    )
+
+                    convo?.startWakeMode()
+                }
+
+            } catch (e: Exception) {
+                ui.post {
+                    updateNotification("Solmie failed to initialize")
+                }
             }
         }.start()
     }
 
-    /* -------------------- NOTIFICATION -------------------- */
+    /* ---------------- NOTIFICATIONS ---------------- */
 
     private fun buildNotification(text: String): Notification {
         return Notification.Builder(this, "solmie")
@@ -82,12 +111,4 @@ class WhisperService : Service() {
         getSystemService(NotificationManager::class.java)
             .createNotificationChannel(channel)
     }
-
-    override fun onDestroy() {
-        convo.stop()
-        speech.shutdown()
-        super.onDestroy()
-    }
-
-    override fun onBind(intent: Intent?): IBinder? = null
 }
