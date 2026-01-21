@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 
 class ConversationController(
+    private val memory: ShortTermMemory = ShortTermMemory(50),
     private val ctx: Context,
     private val speech: SpeechController
 ) {
@@ -16,6 +17,8 @@ class ConversationController(
 
     private lateinit var wake: WakeListener
     private var inConversation = false
+
+    /* -------------------- WAKE MODE -------------------- */
 
     fun startWakeMode() {
         inConversation = false
@@ -30,12 +33,14 @@ class ConversationController(
         wake.start()
     }
 
+    /* -------------------- CONVERSATION -------------------- */
+
     private fun startConversation() {
         inConversation = true
         wake.stop()
 
         speech.speak(
-            text = "Haan dost, bolo kya madad karun?",
+            text = "Haan dost, bolo kya madad karun?"
         ) {
             listenOnce()
         }
@@ -45,16 +50,26 @@ class ConversationController(
         voice.listen { text ->
 
             val lang = LanguageDetector.detect(text)
+            memory.addUser(text)
+
             val prompt = """
                 ${lang.prompt}
-                User said: "$text"
+
+                Conversation so far:
+                ${memory.context()}
+
+                Now reply naturally to the user.
             """.trimIndent()
 
             Thread {
                 val answer = phi.reply(prompt)
 
+                // ✅ ADD ASSISTANT MEMORY ONCE (IMPORTANT)
+                memory.addAssistant(answer)
+
                 ui.post {
                     speech.setLanguage(lang)
+
                     val chunks = TextChunker.chunk(answer)
 
                     speakChunksSequentially(chunks) {
@@ -64,6 +79,8 @@ class ConversationController(
             }.start()
         }
     }
+
+    /* -------------------- STREAMING SPEECH -------------------- */
 
     private fun speakChunksSequentially(
         chunks: List<String>,
@@ -89,8 +106,12 @@ class ConversationController(
 
         speakNext()
     }
-    
+
+    /* -------------------- LIFECYCLE -------------------- */
+
     fun stop() {
-        if (::wake.isInitialized) wake.stop()
+        if (::wake.isInitialized) {
+            wake.stop()
+        }
     }
 }
