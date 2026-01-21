@@ -1,43 +1,77 @@
 package com.brain
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.content.Intent
+import java.util.*
 
-class Voice(val ctx: Context) {
+class Voice(private val ctx: Context) {
 
-      private val sr = SpeechRecognizer.createSpeechRecognizer(ctx)
+    private var speechRecognizer: SpeechRecognizer? = null
+    private val ui = Handler(Looper.getMainLooper())
 
-          fun listen(cb: (String) -> Unit) {
+    fun listen(onResult: (String) -> Unit) {
+        destroy()
 
-                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                                        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(ctx)
 
-                                                sr.setRecognitionListener(object : RecognitionListener {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+            )
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
+        }
 
-                                                              override fun onResults(results: Bundle?) {
-                                                                                val list = results
-                                                                                                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
 
-                                                                                                                    if (!list.isNullOrEmpty()) {
-                                                                                                                                          cb(list[0])
-                                                                                                                    }
-                                                              }
+            override fun onResults(results: Bundle?) {
+                val list =
+                    results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
 
-                                                                          override fun onReadyForSpeech(p0: Bundle?) {}
-                                                                                      override fun onBeginningOfSpeech() {}
-                                                                                                  override fun onRmsChanged(p0: Float) {}
-                                                                                                              override fun onBufferReceived(p0: ByteArray?) {}
-                                                                                                                          override fun onEndOfSpeech() {}
-                                                                                                                                      override fun onError(p0: Int) {}
-                                                                                                                                                  override fun onPartialResults(p0: Bundle?) {}
-                                                                                                                                                              override fun onEvent(p0: Int, p1: Bundle?) {}
-                                                })
+                if (!list.isNullOrEmpty()) {
+                    onResult(list[0])
+                }
 
-                                                        sr.startListening(intent)
-          }
+                destroy()
+            }
+
+            override fun onError(error: Int) {
+                // Auto-recover after error
+                destroy()
+            }
+
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+
+        speechRecognizer?.startListening(intent)
+
+        // Safety timeout: kill recognizer if stuck
+        ui.postDelayed({
+            destroy()
+        }, 10_000)
+    }
+
+    private fun destroy() {
+        speechRecognizer?.apply {
+            stopListening()
+            cancel()
+            destroy()
+        }
+        speechRecognizer = null
+    }
 }
