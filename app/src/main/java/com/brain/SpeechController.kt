@@ -19,7 +19,7 @@ class SpeechController(private val ctx: Context) {
     private val ui = Handler(Looper.getMainLooper())
     private var pendingOnDone: (() -> Unit)? = null
 
-    // 🔥 NEW: speaking state
+    // Speaking state (for interruption / barge-in)
     private val isSpeaking = AtomicBoolean(false)
 
     fun initTts(onReady: () -> Unit) {
@@ -27,7 +27,8 @@ class SpeechController(private val ctx: Context) {
 
         tts = TextToSpeech(ctx) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                setLanguage(LanguageDetector.Lang.HINGLISH)
+                // Safe universal default (will be overridden dynamically)
+                tts.language = Locale.US
                 setTtsListener()
                 onReady()
             }
@@ -39,7 +40,6 @@ class SpeechController(private val ctx: Context) {
      */
     fun setLanguage(lang: LanguageDetector.Lang) {
         val result = tts.setLanguage(lang.locale)
-
         if (
             result == TextToSpeech.LANG_MISSING_DATA ||
             result == TextToSpeech.LANG_NOT_SUPPORTED
@@ -67,7 +67,7 @@ class SpeechController(private val ctx: Context) {
     }
 
     /**
-     * 🔥 NEW: User barge-in support
+     * User barge-in support
      */
     fun interrupt() {
         ui.post {
@@ -80,9 +80,6 @@ class SpeechController(private val ctx: Context) {
         }
     }
 
-    /**
-     * 🔥 NEW: Query speaking state
-     */
     fun isSpeaking(): Boolean = isSpeaking.get()
 
     private fun setTtsListener() {
