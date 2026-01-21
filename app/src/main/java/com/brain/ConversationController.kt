@@ -3,29 +3,32 @@ package com.brain
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import java.util.concurrent.atomic.AtomicBoolean
 
 class ConversationController(
-    private val memory: ShortTermMemory = ShortTermMemory(50),
     private val ctx: Context,
-    private val speech: SpeechController
+    private val speech: SpeechController,
+    private val memory: ShortTermMemory = ShortTermMemory(50)
 ) {
 
     private val ui = Handler(Looper.getMainLooper())
 
     private val voice = Voice(ctx)
     private val phi = Phi3(ctx)
-    private val search = Search()
-    private lateinit var wake: WakeListener
-    private var inConversation = false
 
-    /* -------------------- WAKE MODE -------------------- */
+    private lateinit var wake: WakeListener
+
+    private val inConversation = AtomicBoolean(false)
+    private val isStreaming = AtomicBoolean(false)
+
+    /* ---------------- WAKE MODE ---------------- */
 
     fun startWakeMode() {
-        inConversation = false
+        inConversation.set(false)
 
         wake = WakeListener(ctx) {
             ui.post {
-                if (!inConversation) {
+                if (!inConversation.get()) {
                     startConversation()
                 }
             }
@@ -33,10 +36,10 @@ class ConversationController(
         wake.start()
     }
 
-    /* -------------------- CONVERSATION -------------------- */
+    /* ---------------- CONVERSATION ---------------- */
 
     private fun startConversation() {
-        inConversation = true
+        inConversation.set(true)
         wake.stop()
 
         speech.speak(
@@ -49,77 +52,74 @@ class ConversationController(
     private fun listenOnce() {
         voice.listen { text ->
 
+            // 🔥 Interrupt speech immediately if user speaks
+            speech.interrupt()
+
             val lang = LanguageDetector.detect(text)
             memory.addUser(text)
 
+            val prompt = """
+                ${lang.prompt}
+
+                Conversation so far:
+                ${memory.context()}
+
+                Now reply naturally and briefly.
+            """.trimIndent()
+
             Thread {
-                // 🔍 Decide if search is needed
-                val webInfo = if (needsSearch(text)) {
-                    search.web(text)
-                } else ""
-
-                val wikiInfo = if (needsWiki(text)) {
-                    search.wiki(text)
-                } else ""
-
-                val prompt = """
-                    ${lang.prompt}
-
-                    Conversation so far:
-                    ${memory.context()}
-
-                    External knowledge (if useful):
-                    Web: $webInfo
-                    Wiki: $wikiInfo
-
-                    Now reply clearly and naturally.
-                """.trimIndent()
-
                 val answer = phi.reply(prompt)
+
+                // If user interrupted during inference → ignore
+                if (!inConversation.get()) return@Thread
+
                 memory.addAssistant(answer)
 
                 ui.post {
                     speech.setLanguage(lang)
-
-                    val chunks = TextChunker.chunk(answer)
-                    speakChunksSequentially(chunks) {
-                        startWakeMode()
-                    }
+                    streamAnswer(answer)
                 }
             }.start()
         }
     }
 
-    /* -------------------- STREAMING SPEECH -------------------- */
+    /* ---------------- STREAMING ---------------- */
 
-    private fun speakChunksSequentially(
-        chunks: List<String>,
-        onComplete: () -> Unit
-    ) {
-        if (chunks.isEmpty()) {
-            onComplete()
-            return
-        }
+    private fun streamAnswer(answer: String) {
+        isStreaming.set(true)
 
+        val chunks = TextChunker.chunk(answer)
         val iterator = chunks.iterator()
 
         fun speakNext() {
-            if (!iterator.hasNext()) {
-                onComplete()
+            if (!iterator.hasNext() || !isStreaming.get()) {
+                isStreaming.set(false)
+                startWakeMode()
                 return
             }
 
             speech.speak(iterator.next()) {
-                speakNext()
+                // If interrupted → stop streaming
+                if (!speech.isSpeaking()) {
+                    isStreaming.set(false)
+                    startWakeMode()
+                } else {
+                    speakNext()
+                }
             }
         }
 
         speakNext()
     }
 
-    /* -------------------- LIFECYCLE -------------------- */
+    /* ---------------- STOP ---------------- */
 
     fun stop() {
+        isStreaming.set(false)
+        inConversation.set(false)
+
+        speech.interrupt()
+
         if (::wake.isInitialized) {
             wake.stop()
         }
