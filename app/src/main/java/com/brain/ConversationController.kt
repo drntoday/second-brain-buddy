@@ -15,6 +15,7 @@ class ConversationController(
 
     private val voice = Voice(ctx)
     private val phi = Phi3(ctx)
+    private val search = Search()
 
     private lateinit var wake: WakeListener
 
@@ -42,9 +43,7 @@ class ConversationController(
         inConversation.set(true)
         wake.stop()
 
-        speech.speak(
-            text = "Haan dost, bolo kya madad karun?"
-        ) {
+        speech.speak("Haan dost, bolo kya madad karun?") {
             listenOnce()
         }
     }
@@ -52,25 +51,24 @@ class ConversationController(
     private fun listenOnce() {
         voice.listen { text ->
 
-            // 🔥 Interrupt speech immediately if user speaks
+            // 🔥 Interrupt any ongoing speech
             speech.interrupt()
 
             val lang = LanguageDetector.detect(text)
             memory.addUser(text)
 
-            val prompt = """
-                ${lang.prompt}
-
-                Conversation so far:
-                ${memory.context()}
-
-                Now reply naturally and briefly.
-            """.trimIndent()
-
             Thread {
+
+                val grounding = if (shouldSearch(text)) {
+                    fetchGrounding(text)
+                } else {
+                    ""
+                }
+
+                val prompt = buildPrompt(lang, grounding)
+
                 val answer = phi.reply(prompt)
 
-                // If user interrupted during inference → ignore
                 if (!inConversation.get()) return@Thread
 
                 memory.addAssistant(answer)
@@ -81,6 +79,50 @@ class ConversationController(
                 }
             }.start()
         }
+    }
+
+    /* ---------------- SEARCH LOGIC ---------------- */
+
+    private fun shouldSearch(text: String): Boolean {
+        val t = text.lowercase()
+
+        val triggers = listOf(
+            "who", "what", "when", "where", "why", "how",
+            "latest", "news", "current", "price",
+            "explain", "define", "history", "meaning"
+        )
+
+        return triggers.any { t.contains(it) }
+    }
+
+    private fun fetchGrounding(query: String): String {
+        val wiki = search.wiki(query)
+        if (wiki.isNotBlank()) {
+            return "Wikipedia summary:\n$wiki"
+        }
+
+        val web = search.web(query)
+        return if (web.isNotBlank()) {
+            "Web search results:\n$web"
+        } else {
+            ""
+        }
+    }
+
+    private fun buildPrompt(
+        lang: LanguageDetector.Lang,
+        grounding: String
+    ): String {
+        return """
+            ${lang.prompt}
+
+            ${if (grounding.isNotBlank()) "Use the following real-world information:\n$grounding\n" else ""}
+
+            Conversation so far:
+            ${memory.context()}
+
+            Now reply naturally, briefly, and clearly.
+        """.trimIndent()
     }
 
     /* ---------------- STREAMING ---------------- */
@@ -99,7 +141,6 @@ class ConversationController(
             }
 
             speech.speak(iterator.next()) {
-                // If interrupted → stop streaming
                 if (!speech.isSpeaking()) {
                     isStreaming.set(false)
                     startWakeMode()
